@@ -1,4 +1,5 @@
 
+import configparser
 import os
 import subprocess
 import logging
@@ -12,8 +13,11 @@ from starlette.responses import StreamingResponse, JSONResponse
 from ray import serve
 from ray.serve import Application
 
+from vllm.config import get_current_vllm_config
+
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.engine.metrics import RayPrometheusStatLogger
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -26,6 +30,7 @@ from vllm.entrypoints.openai.serving_models import (
     LoRAModulePath,
 )
 
+from vllm.usage.usage_lib import UsageContext
 from vllm.config import ModelConfig
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
@@ -34,6 +39,16 @@ logger = init_logger(__name__)
 
 # Initialize FastAPI correctly
 app = FastAPI()
+
+def get_served_model_names(engine_args: AsyncEngineArgs) -> List[str]:
+    if engine_args.served_model_name is not None:
+        served_model_names: Union[str, List[str]] = engine_args.served_model_name
+        # Because the typing suggests it could be a string or list of strings
+        if isinstance(served_model_names, str):
+            served_model_names: List[str] = [served_model_names]
+    else:
+        served_model_names: List[str] = [engine_args.model]
+    return served_model_names
 
 @serve.deployment(name="VLLMDeployment", health_check_period_s=10)
 @serve.ingress(app)
@@ -78,7 +93,8 @@ class VLLMDeployment:
             max_num_seqs=max_num_seqs,
             block_size=block_size,
             max_model_len=max_model_len,
-            disable_log_requests=True,
+            disable_log_requests=False,
+            disable_log_stats=False,
             device="cuda",
             dtype="bfloat16",  # Matches model config
             trust_remote_code=True,
@@ -87,11 +103,19 @@ class VLLMDeployment:
             max_lora_rank=8,
         )
         logger.info(f"Engine Args Initialized: {engine_args}")
-
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
         self.response_role = response_role
         self.chat_template = chat_template
         self.openai_serving_chat = None
+        self.usage_context: UsageContext = UsageContext.ENGINE_CONTEXT,
+        self.engine_config = engine_args.create_engine_config(self.usage_context)
+        served_model_names: List[str] = get_served_model_names(engine_args)
+        additional_metrics_logger: RayPrometheusStatLogger = RayPrometheusStatLogger(
+            local_interval=0.5,
+            labels=dict(model_name=served_model_names[0]),
+            vllm_config=self.engine_config
+        )
+        self.engine.add_logger("ray", additional_metrics_logger)
 
     async def health_check(self):
         """Health check for Ray Serve deployment"""

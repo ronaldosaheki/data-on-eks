@@ -8,8 +8,6 @@ metadata:
   annotations:
     # Force update on content change
     checksum/config: {{ $.Files.Get "files/llm_serve_deepseek.py" | sha256sum }}
-    # Add timestamp to force update
-    timestamp: "{{ now | date "20060102150405" }}"
     # Add chart version
     helm.sh/chart-version: {{ .Chart.Version }}
 data:
