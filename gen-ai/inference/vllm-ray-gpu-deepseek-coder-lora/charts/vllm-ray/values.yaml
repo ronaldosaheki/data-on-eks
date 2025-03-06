@@ -1,0 +1,127 @@
+# Default values for vllm-ray.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+replicaCount: 1
+
+# This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
+image:
+  repository: public.ecr.aws/data-on-eks/ray-2.41.0-py310-cu118-vllm0.7.0
+  # This sets the pull policy for images.
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+# This is to override the chart name.
+nameOverride: ""
+fullnameOverride: ""
+
+# This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# This is for setting Kubernetes Annotations to a Pod.
+# For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+podAnnotations: {}
+# This is for setting Kubernetes Labels to a Pod.
+# For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+podLabels: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+huggingface:
+  token: ""  # Base64 encoded Hugging Face token
+
+persistence:
+  existingClaim: "efs-claim"
+
+ray:
+  version: "2.41.0"
+  enableInTreeAutoscaling: true
+  applicationName: "deepseek"
+  serviceUnhealthySecondThreshold: 1800
+  deploymentUnhealthySecondThreshold: 1800
+  modelId: "deepseek-ai/deepseek-coder-6.7b-instruct"
+  blockSize: "128"
+  maxModelLen: "8192"
+  maxNumBatchedTokens: "16384"
+  trustRemoteCode: "True"
+  tensorParallelSize: "1"
+  loraModules: "deepseek_lora=/data/models/deepseek-coder-6.7b-instruct-LORA_attention_head_sketch"
+  minReplicas: 1
+  maxReplicas: 2
+  targetNumOngoingRequestsPerReplica: 32
+  numCpus: 8
+  numGpus: 1
+  workerReplicas: 1
+  minWorkerReplicas: 1
+  maxWorkerReplicas: 2
+  service:
+    type: ClusterIP
+
+resources:
+  head:
+    limits:
+      cpu: "4"
+      memory: "16Gi"
+    requests:
+      cpu: "2"
+      memory: "8Gi"
+  worker:
+    limits:
+      cpu: "32"
+      memory: "64Gi"
+      gpu: "1"
+    requests:
+      cpu: "16"
+      memory: "32Gi"
+      gpu: "1"
+
+nodeSelector:
+  head:
+    NodeGroupType: x86-cpu-karpenter
+    type: karpenter
+  worker:
+    NodeGroupType: g5-gpu-karpenter
+    type: karpenter
+
+# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+# This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true

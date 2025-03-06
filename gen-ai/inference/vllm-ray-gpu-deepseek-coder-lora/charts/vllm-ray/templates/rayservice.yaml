@@ -1,0 +1,150 @@
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: {{ include "vllm-ray.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceUnhealthySecondThreshold: {{ .Values.ray.serviceUnhealthySecondThreshold }}
+  deploymentUnhealthySecondThreshold: {{ .Values.ray.deploymentUnhealthySecondThreshold }}
+  serveConfigV2: |
+    applications:
+      - name: {{ .Values.ray.applicationName }}
+        import_path: serve:model
+        route_prefix: "/"
+        runtime_env:
+          env_vars:
+            LD_LIBRARY_PATH: "/home/ray/anaconda3/lib:$LD_LIBRARY_PATH"
+            MODEL_ID: {{ .Values.ray.modelId | quote }}
+            GPU_MEMORY_UTILIZATION: "0.9"
+            BLOCK_SIZE: {{ .Values.ray.blockSize | quote }}
+            MAX_MODEL_LEN: {{ .Values.ray.maxModelLen | quote }}
+            MAX_NUM_BATCHED_TOKENS: {{ .Values.ray.maxNumBatchedTokens | quote }}
+            TRUST_REMOTE_CODE: {{ .Values.ray.trustRemoteCode | quote }}
+            TENSOR_PARALLEL_SIZE: {{ .Values.ray.tensorParallelSize | quote }}
+            LORA_MODULES: {{ .Values.ray.loraModules | quote }}
+        deployments:
+          - name: VLLMDeployment
+            autoscaling_config:
+              min_replicas: {{ .Values.ray.minReplicas }}
+              max_replicas: {{ .Values.ray.maxReplicas }}
+              target_num_ongoing_requests_per_replica: {{ .Values.ray.targetNumOngoingRequestsPerReplica }}
+            ray_actor_options:
+              num_cpus: {{ .Values.ray.numCpus }}
+              num_gpus: {{ .Values.ray.numGpus }}
+  rayClusterConfig:
+    rayVersion: {{ .Values.ray.version | quote }}
+    enableInTreeAutoscaling: {{ .Values.ray.enableInTreeAutoscaling }}
+    headGroupSpec:
+      headService:
+        type: {{ .Values.ray.service.type }}
+      serviceType: {{ .Values.ray.service.type }}
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+        block: "true"
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: {{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            resources:
+              limits:
+                cpu: {{ .Values.resources.head.limits.cpu }}
+                memory: {{ .Values.resources.head.limits.memory }}
+              requests:
+                cpu: {{ .Values.resources.head.requests.cpu }}
+                memory: {{ .Values.resources.head.requests.memory }}
+            env:
+              - name: VLLM_PORT
+                value: "8004"
+              - name: HUGGING_FACE_HUB_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ include "vllm-ray.fullname" . }}-hf-token
+                    key: hf-token
+              - name: RAY_GRAFANA_HOST
+                value: http://kube-prometheus-stack-grafana.kube-prometheus-stack.svc:80
+              - name: RAY_PROMETHEUS_HOST
+                value: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc:9090
+            ports:
+              - containerPort: 6379
+                name: gcs
+              - containerPort: 8265
+                name: dashboard
+              - containerPort: 10001
+                name: client
+              - containerPort: 8000
+                name: serve
+            volumeMounts:
+              - mountPath: /tmp/ray
+                name: ray-logs
+              - name: vllm-script
+                mountPath: /home/ray/serve.py
+                subPath: serve.py
+              - mountPath: /data
+                name: persistent-storage
+          volumes:
+            - name: ray-logs
+              emptyDir: {}
+            - name: vllm-script
+              configMap:
+                name: {{ include "vllm-ray.fullname" . }}-serve
+            - name: persistent-storage
+              persistentVolumeClaim:
+                claimName: {{ .Values.persistence.existingClaim }}
+          nodeSelector:
+{{ toYaml .Values.nodeSelector.head | indent 12 }}
+    workerGroupSpecs:
+      - groupName: gpu-worker-group
+        replicas: {{ .Values.ray.workerReplicas }}
+        minReplicas: {{ .Values.ray.minWorkerReplicas }}
+        maxReplicas: {{ .Values.ray.maxWorkerReplicas }}
+        rayStartParams:
+          block: "true"
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: {{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+                imagePullPolicy: {{ .Values.image.pullPolicy }}
+                env:
+                  - name: VLLM_PORT
+                    value: "8004"
+                  - name: HUGGING_FACE_HUB_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: {{ include "vllm-ray.fullname" . }}-hf-token
+                        key: hf-token
+                  - name: RAY_GRAFANA_HOST
+                    value: http://kube-prometheus-stack-grafana.kube-prometheus-stack.svc:80
+                  - name: RAY_PROMETHEUS_HOST
+                    value: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc:9090
+                resources:
+                  limits:
+                    cpu: {{ .Values.resources.worker.limits.cpu }}
+                    memory: {{ .Values.resources.worker.limits.memory }}
+                    nvidia.com/gpu: {{ .Values.resources.worker.limits.gpu }}
+                  requests:
+                    cpu: {{ .Values.resources.worker.requests.cpu }}
+                    memory: {{ .Values.resources.worker.requests.memory }}
+                    nvidia.com/gpu: {{ .Values.resources.worker.requests.gpu }}
+                volumeMounts:
+                  - mountPath: /dev/shm
+                    name: dshm
+                  - name: vllm-script
+                    mountPath: /home/ray/serve.py
+                    subPath: serve.py
+                  - mountPath: /data
+                    name: persistent-storage
+            volumes:
+              - name: dshm
+                emptyDir:
+                  medium: Memory
+              - name: vllm-script
+                configMap:
+                  name: {{ include "vllm-ray.fullname" . }}-serve
+              - name: persistent-storage
+                persistentVolumeClaim:
+                  claimName: {{ .Values.persistence.existingClaim }}
+            nodeSelector:
+{{ toYaml .Values.nodeSelector.worker | indent 14 }}

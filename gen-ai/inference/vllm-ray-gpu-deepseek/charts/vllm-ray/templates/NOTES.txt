@@ -1,0 +1,22 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+
+The Ray service has been deployed with the following configuration:
+- Ray Version: {{ .Values.ray.version }}
+- Model: {{ .Values.ray.modelId }}
+- LoRA Modules: {{ .Values.ray.loraModules }}
+
+To get the Ray dashboard URL:
+  export RAY_HEAD_POD=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "ray.io/node-type=head" -o jsonpath="{.items[0].metadata.name}")
+  kubectl port-forward --namespace {{ .Release.Namespace }} $RAY_HEAD_POD 8265:8265
+
+The Ray dashboard will be available at:
+  http://127.0.0.1:8265
+
+To use the vLLM API:
+  export VLLM_POD=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "ray.io/node-type=head" -o jsonpath="{.items[0].metadata.name}")
+  kubectl port-forward --namespace {{ .Release.Namespace }} $VLLM_POD 8000:8000
+
+The vLLM API will be available at:
+  http://127.0.0.1:8000/v1/chat/completions

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vllm-ray.fullname" . }}-serve
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vllm-ray.labels" . | nindent 4 }}
+  annotations:
+    # Force update on content change
+    checksum/config: {{ $.Files.Get "files/llm_serve_deepseek.py" | sha256sum }}
+    # Add timestamp to force update
+    timestamp: "{{ now | date "20060102150405" }}"
+    # Add chart version
+    helm.sh/chart-version: {{ .Chart.Version }}
+data:
+  serve.py: |-
+{{- $.Files.Get "files/llm_serve_deepseek.py" | nindent 4 }}
