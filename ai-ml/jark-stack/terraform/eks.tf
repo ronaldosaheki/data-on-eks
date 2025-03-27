@@ -75,7 +75,7 @@ module "eks" {
       xvda = {
         device_name = "/dev/xvda"
         ebs = {
-          volume_size = 100
+          volume_size = 250
           volume_type = "gp3"
         }
       }
@@ -114,7 +114,7 @@ module "eks" {
     }
 
     # GPU Nodegroup for JupyterHub Notebook and Ray Service
-    gpu1 = {
+    g6e-gpu1 = {
       name        = "gpu-node-grp"
       description = "EKS Node Group to run GPU workloads"
       # Filtering only Secondary CIDR private subnets starting with "100.".
@@ -125,16 +125,17 @@ module "eks" {
 
       ami_type     = "AL2_x86_64_GPU"
       min_size     = 0
-      max_size     = 1
+      max_size     = 10
       desired_size = 0
 
-      instance_types = ["g5.12xlarge"]
+      instance_types = ["g6e.12xlarge"]
 
       labels = {
         WorkerType    = "ON_DEMAND"
         NodeGroupType = "gpu"
       }
 
+      bootstrap_extra_args = "--local-disks raid0"
       taints = {
         gpu = {
           key      = "nvidia.com/gpu"
@@ -148,6 +149,75 @@ module "eks" {
       })
     }
 
+    g6-gpu1 = {
+      name        = "gpu-node-grp"
+      description = "EKS Node Group to run GPU workloads"
+      # Filtering only Secondary CIDR private subnets starting with "100.".
+      # Subnet IDs where the nodes/node groups will be provisioned
+      subnet_ids = compact([for subnet_id, cidr_block in zipmap(module.vpc.private_subnets, module.vpc.private_subnets_cidr_blocks) :
+        substr(cidr_block, 0, 4) == "100." ? subnet_id : null]
+      )
+
+      ami_type     = "AL2_x86_64_GPU"
+      min_size     = 0
+      max_size     = 10
+      desired_size = 0
+
+      instance_types = ["g6.12xlarge"]
+
+      labels = {
+        WorkerType    = "ON_DEMAND"
+        NodeGroupType = "gpu"
+      }
+
+      bootstrap_extra_args = "--local-disks raid0"
+      taints = {
+        gpu = {
+          key      = "nvidia.com/gpu"
+          effect   = "NO_SCHEDULE"
+          operator = "EXISTS"
+        }
+      }
+
+      tags = merge(local.tags, {
+        Name = "gpu-node-grp"
+      })
+    }
+
+    g5-gpu1 = {
+      name        = "gpu-node-grp"
+      description = "EKS Node Group to run GPU workloads"
+      # Filtering only Secondary CIDR private subnets starting with "100.".
+      # Subnet IDs where the nodes/node groups will be provisioned
+      subnet_ids = compact([for subnet_id, cidr_block in zipmap(module.vpc.private_subnets, module.vpc.private_subnets_cidr_blocks) :
+        substr(cidr_block, 0, 4) == "100." ? subnet_id : null]
+      )
+
+      ami_type     = "AL2_x86_64_GPU"
+      min_size     = 0
+      max_size     = 10
+      desired_size = 0
+
+      instance_types = ["g5.12xlarge"]
+
+      labels = {
+        WorkerType    = "ON_DEMAND"
+        NodeGroupType = "gpu"
+      }
+
+      bootstrap_extra_args = "--local-disks raid0"
+      taints = {
+        gpu = {
+          key      = "nvidia.com/gpu"
+          effect   = "NO_SCHEDULE"
+          operator = "EXISTS"
+        }
+      }
+
+      tags = merge(local.tags, {
+        Name = "gpu-node-grp"
+      })
+    }
     # # This nodegroup can be used for P4/P5 instances with, or without, a Capacity Reservation.
     # #
     # gpu_p5_node_group = {
