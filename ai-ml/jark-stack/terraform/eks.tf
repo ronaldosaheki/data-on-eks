@@ -115,7 +115,7 @@ module "eks" {
 
     # GPU Nodegroup for JupyterHub Notebook and Ray Service
     g6e-gpu1 = {
-      name        = "gpu-node-grp"
+      name        = "g6e-gpu-node-grp"
       description = "EKS Node Group to run GPU workloads"
       # Filtering only Secondary CIDR private subnets starting with "100.".
       # Subnet IDs where the nodes/node groups will be provisioned
@@ -132,10 +132,17 @@ module "eks" {
 
       labels = {
         WorkerType    = "ON_DEMAND"
-        NodeGroupType = "gpu"
+        NodeGroupType = "g6e-gpu"
       }
 
-      bootstrap_extra_args = "--local-disks raid0"
+      pre_bootstrap_user_data = <<-EOT
+        #!/usr/bin/env bash
+
+        # Mount instance store volumes in RAID-0 for kubelet and containerd
+        # https://github.com/awslabs/amazon-eks-ami/blob/master/doc/USER_GUIDE.md#raid-0-for-kubelet-and-containerd-raid0
+        /bin/setup-local-disks raid0
+      EOT
+
       taints = {
         gpu = {
           key      = "nvidia.com/gpu"
@@ -145,12 +152,12 @@ module "eks" {
       }
 
       tags = merge(local.tags, {
-        Name = "gpu-node-grp"
+        Name = "g6e-gpu-node-grp"
       })
     }
 
     g6-gpu1 = {
-      name        = "gpu-node-grp"
+      name        = "g6-gpu-node-grp"
       description = "EKS Node Group to run GPU workloads"
       # Filtering only Secondary CIDR private subnets starting with "100.".
       # Subnet IDs where the nodes/node groups will be provisioned
@@ -167,10 +174,17 @@ module "eks" {
 
       labels = {
         WorkerType    = "ON_DEMAND"
-        NodeGroupType = "gpu"
+        NodeGroupType = "g6-gpu"
       }
 
-      bootstrap_extra_args = "--local-disks raid0"
+      pre_bootstrap_user_data = <<-EOT
+        #!/usr/bin/env bash
+
+        # Mount instance store volumes in RAID-0 for kubelet and containerd
+        # https://github.com/awslabs/amazon-eks-ami/blob/master/doc/USER_GUIDE.md#raid-0-for-kubelet-and-containerd-raid0
+        /bin/setup-local-disks raid0
+      EOT
+
       taints = {
         gpu = {
           key      = "nvidia.com/gpu"
@@ -180,12 +194,12 @@ module "eks" {
       }
 
       tags = merge(local.tags, {
-        Name = "gpu-node-grp"
+        Name = "g6-gpu-node-grp"
       })
     }
 
     g5-gpu1 = {
-      name        = "gpu-node-grp"
+      name        = "g5-gpu-node-grp"
       description = "EKS Node Group to run GPU workloads"
       # Filtering only Secondary CIDR private subnets starting with "100.".
       # Subnet IDs where the nodes/node groups will be provisioned
@@ -202,10 +216,17 @@ module "eks" {
 
       labels = {
         WorkerType    = "ON_DEMAND"
-        NodeGroupType = "gpu"
+        NodeGroupType = "g5-gpu"
       }
 
-      bootstrap_extra_args = "--local-disks raid0"
+      pre_bootstrap_user_data = <<-EOT
+        #!/usr/bin/env bash
+
+        # Mount instance store volumes in RAID-0 for kubelet and containerd
+        # https://github.com/awslabs/amazon-eks-ami/blob/master/doc/USER_GUIDE.md#raid-0-for-kubelet-and-containerd-raid0
+        /bin/setup-local-disks raid0
+      EOT
+
       taints = {
         gpu = {
           key      = "nvidia.com/gpu"
@@ -215,7 +236,7 @@ module "eks" {
       }
 
       tags = merge(local.tags, {
-        Name = "gpu-node-grp"
+        Name = "g5-gpu-node-grp"
       })
     }
     # # This nodegroup can be used for P4/P5 instances with, or without, a Capacity Reservation.

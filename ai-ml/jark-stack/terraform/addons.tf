@@ -323,6 +323,126 @@ module "data_addons" {
       EOT
       ]
     }
+    g6-gpu-karpenter = {
+      values = [
+        <<-EOT
+      name: g6-gpu-karpenter
+      clusterName: ${module.eks.cluster_name}
+      ec2NodeClass:
+        amiFamily: Bottlerocket
+        karpenterRole: ${split("/", module.eks_blueprints_addons.karpenter.node_iam_role_arn)[1]}
+        subnetSelectorTerms:
+          id: ${module.vpc.private_subnets[2]}
+        securityGroupSelectorTerms:
+          tags:
+            Name: ${module.eks.cluster_name}-node
+        instanceStorePolicy: RAID0
+        blockDeviceMappings:
+          # Root device
+          - deviceName: /dev/xvda
+            ebs:
+              volumeSize: 50Gi
+              volumeType: gp3
+              encrypted: true
+          # Data device: Container resources such as images and logs
+          - deviceName: /dev/xvdb
+            ebs:
+              volumeSize: 300Gi
+              volumeType: gp3
+              encrypted: true
+              ${var.bottlerocket_data_disk_snpashot_id != null ? "snapshotID: ${var.bottlerocket_data_disk_snpashot_id}" : ""}
+
+      nodePool:
+        labels:
+          - type: karpenter
+          - NodeGroupType: g6-gpu-karpenter
+        taints:
+          - key: nvidia.com/gpu
+            value: "Exists"
+            effect: "NoSchedule"
+        requirements:
+          - key: "karpenter.k8s.aws/instance-family"
+            operator: In
+            values: ["g6"]
+          - key: "karpenter.k8s.aws/instance-size"
+            operator: In
+            values: [ "12xlarge" ]
+          - key: "kubernetes.io/arch"
+            operator: In
+            values: ["amd64"]
+          - key: "karpenter.sh/capacity-type"
+            operator: In
+            values: ["spot", "on-demand"]
+        limits:
+          cpu: 1000
+        disruption:
+          consolidationPolicy: WhenEmpty
+          consolidateAfter: 300s
+          expireAfter: 720h
+        weight: 100
+      EOT
+      ]
+    }
+    g6e-gpu-karpenter = {
+      values = [
+        <<-EOT
+      name: g6e-gpu-karpenter
+      clusterName: ${module.eks.cluster_name}
+      ec2NodeClass:
+        amiFamily: Bottlerocket
+        karpenterRole: ${split("/", module.eks_blueprints_addons.karpenter.node_iam_role_arn)[1]}
+        subnetSelectorTerms:
+          id: ${module.vpc.private_subnets[2]}
+        securityGroupSelectorTerms:
+          tags:
+            Name: ${module.eks.cluster_name}-node
+        instanceStorePolicy: RAID0
+        blockDeviceMappings:
+          # Root device
+          - deviceName: /dev/xvda
+            ebs:
+              volumeSize: 50Gi
+              volumeType: gp3
+              encrypted: true
+          # Data device: Container resources such as images and logs
+          - deviceName: /dev/xvdb
+            ebs:
+              volumeSize: 300Gi
+              volumeType: gp3
+              encrypted: true
+              ${var.bottlerocket_data_disk_snpashot_id != null ? "snapshotID: ${var.bottlerocket_data_disk_snpashot_id}" : ""}
+
+      nodePool:
+        labels:
+          - type: karpenter
+          - NodeGroupType: g6e-gpu-karpenter
+        taints:
+          - key: nvidia.com/gpu
+            value: "Exists"
+            effect: "NoSchedule"
+        requirements:
+          - key: "karpenter.k8s.aws/instance-family"
+            operator: In
+            values: ["g6e"]
+          - key: "karpenter.k8s.aws/instance-size"
+            operator: In
+            values: [ "12xlarge" ]
+          - key: "kubernetes.io/arch"
+            operator: In
+            values: ["amd64"]
+          - key: "karpenter.sh/capacity-type"
+            operator: In
+            values: ["spot", "on-demand"]
+        limits:
+          cpu: 1000
+        disruption:
+          consolidationPolicy: WhenEmpty
+          consolidateAfter: 300s
+          expireAfter: 720h
+        weight: 100
+      EOT
+      ]
+    }
     x86-cpu-karpenter = {
       values = [
         <<-EOT
