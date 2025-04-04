@@ -1,0 +1,175 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rayserve-vllm
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hf-token
+  namespace: rayserve-vllm
+data:
+  hf-token: $HUGGING_FACE_HUB_TOKEN
+---
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: vllm
+  namespace: rayserve-vllm
+spec:
+  serviceUnhealthySecondThreshold: 1800
+  deploymentUnhealthySecondThreshold: 1800
+  serveConfigV2: |
+    applications:
+      - name: llm_app
+        import_path: ray.serve.llm.builders:build_openai_app
+        route_prefix: "/"
+        runtime_env:
+          env_vars:
+            HF_HUB_ENABLE_HF_TRANSFER: "1"
+          pip:
+            - awscli
+            - xgrammar==0.1.11
+            - pynvml==12.0.0
+            - ray[serve,llm]>=2.43.0
+            - vllm>=0.7.2
+            - hf_transfer
+        args:
+          llm_configs:
+              - model_loading_config:
+                  model_id: Qwen/Qwen2.5-0.5B-Instruct
+                  model_source: Qwen/Qwen2.5-0.5B-Instruct
+                accelerator_type: A10G
+                deployment_config:
+                  autoscaling_config:
+                      min_replicas: 1
+                      max_replicas: 2
+              - model_loading_config:
+                  model_id: Qwen/Qwen2.5-1.5B-Instruct
+                  model_source: Qwen/Qwen2.5-1.5B-Instruct
+                lora_config:
+                  dynamic_lora_loading_path: s3://example/dynamic-loras/
+                  max_num_adapters_per_replica: 16
+                accelerator_type: A10G
+                engine_kwargs:
+                  enable_lora: true
+                  max_lora_rank: 64
+                deployment_config:
+                  autoscaling_config:
+                      min_replicas: 1
+                      max_replicas: 2
+  rayClusterConfig:
+    rayVersion: '2.43.0'
+    enableInTreeAutoscaling: true
+    headGroupSpec:
+      headService:
+        metadata:
+          namespace: rayserve-vllm
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+        num-cpus: "0"
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: rayproject/ray:2.43.0.ecdcdc-py310-cu121
+              imagePullPolicy: IfNotPresent
+              lifecycle:
+                preStop:
+                  exec:
+                    command: ["/bin/sh", "-c", "ray stop"]
+              ports:
+                - containerPort: 6379
+                  name: gcs
+                - containerPort: 8265
+                  name: dashboard
+                - containerPort: 10001
+                  name: client
+                - containerPort: 8000
+                  name: serve
+              resources:
+                limits:
+                  cpu: 2
+                  memory: "12G"
+                requests:
+                  cpu: 2
+                  memory: "12G"
+              env:
+                - name: VLLM_PORT
+                  value: "8004"
+                - name: LD_LIBRARY_PATH
+                  value: "/home/ray/anaconda3/lib:$LD_LIBRARY_PATH"
+                - name: HUGGING_FACE_HUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: hf-token
+                      key: hf-token
+                - name: RAY_GRAFANA_HOST
+                  value: http://kube-prometheus-stack-grafana.kube-prometheus-stack.svc:80
+                - name: RAY_PROMETHEUS_HOST
+                  value: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc:9090
+              volumeMounts:
+                - mountPath: /tmp/ray
+                  name: ray-logs
+          volumes:
+            - name: ray-logs
+              emptyDir: {}
+          nodeSelector:
+            NodeGroupType: x86-cpu-karpenter
+            type: karpenter
+
+    workerGroupSpecs:
+      - replicas: 2
+        minReplicas: 2
+        maxReplicas: 4
+        groupName: gpu-group
+        rayStartParams: {}
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: rayproject/ray:2.43.0.ecdcdc-py310-cu121
+                imagePullPolicy: IfNotPresent
+                lifecycle:
+                  preStop:
+                    exec:
+                      command: ["/bin/sh", "-c", "ray stop"]
+                resources:
+                  limits:
+                    cpu: 12
+                    memory: "60G"
+                    nvidia.com/gpu: 1
+                  requests:
+                    cpu: 12
+                    memory: "60G"
+                    nvidia.com/gpu: 1
+                env:
+                  - name: VLLM_PORT
+                    value: "8004"
+                  - name: LD_LIBRARY_PATH
+                    value: "/home/ray/anaconda3/lib:$LD_LIBRARY_PATH"
+                  - name: HUGGING_FACE_HUB_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: hf-token
+                        key: hf-token
+                volumeMounts:
+                  - mountPath: /tmp/ray
+                    name: ray-logs
+                  - mountPath: /dev/shm
+                    name: dshm
+            volumes:
+              - name: dshm
+                emptyDir:
+                  medium: Memory
+              - name: ray-logs
+                emptyDir: {}
+            nodeSelector:
+              NodeGroupType: g5-gpu-karpenter
+              type: karpenter
+            tolerations:
+              - key: "nvidia.com/gpu"
+                operator: "Exists"
+                effect: "NoSchedule"
