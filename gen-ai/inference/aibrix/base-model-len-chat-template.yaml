@@ -78,6 +78,7 @@ spec:
             # Note: The `--served-model-name` argument value must also match the Service name and the Deployment label `model.aibrix.ai/name`
             - $MODEL
             - --enable-lora
+            - --enable-chunked-prefill
           image: vllm/vllm-openai:v0.7.3
           imagePullPolicy: Always
           name: vllm-openai
